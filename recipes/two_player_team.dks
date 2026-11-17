@@ -1,0 +1,13 @@
+# Navigate to 2 Players Team and enter Jungle Hijinxs (Rev 2 repro attempt)
+wait 0032 == 0001 timeout 600
+0 * 5100
+pulse 8 6 120 003e == 00eb timeout 6000
+0 * 60
+20 * 6
+0 * 60
+pulse 8 6 120 003e == 00ec timeout 6000
+0 * 60
+pulse 8 6 120 003e == 0016 timeout 6000
+0 * 1500
+pulse 8 8 150 0028 <= 0008 timeout 6000
+0 * 1800

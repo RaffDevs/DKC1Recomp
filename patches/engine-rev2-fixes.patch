@@ -39,3 +39,25 @@ index 2cbc929..50873ee 100644
  
      def b(n): return data[offset + n]
      def word(): return b(1) | (b(2) << 8)
+diff --git a/recompiler/v2/codegen.py b/recompiler/v2/codegen.py
+index 88c11be..cc39875 100644
+--- a/recompiler/v2/codegen.py
++++ b/recompiler/v2/codegen.py
+@@ -1650,9 +1650,15 @@ def _emit_indirect_dispatch(insn) -> List[str]:
+         # the caller's frame on every hit.
+         lines.append(
+             f"    (void)cpu_trace_dispatch_oob(cpu, 0x{site_pc24:06x}, _idx);")
++        # An out-of-range index means the static target list is incomplete for
++        # this ROM revision. Run the indirect JMP at the site through the
++        # interpreter tier (it resolves the pointer at runtime and the handler
++        # balances the caller frame), falling back to the balanced abandon only
++        # if the interpreter bails. This is strictly better than dropping the
++        # handler's side effects, which left the guest wedged.
+         lines.append(
+-            f"    return cpu_unresolved_abandon_balanced(cpu, "
+-            f"0x{site_pc24:06x}u, _entry_s, _hrv);")
++            f"    return interp_tier_dispatch_balanced(cpu, "
++            f"0x{site_pc24:06x}u, 0x{site_pc24:06x}u, _entry_s, _hrv);")
+     lines.append("  }")
+     lines.append("  switch (_idx) {")
+     for i, e in enumerate(entries):

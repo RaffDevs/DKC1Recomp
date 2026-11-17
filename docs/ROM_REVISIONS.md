@@ -16,14 +16,27 @@ CRC `2BCC`). Both are 4 MiB HiROM with 2 KiB battery SRAM and no coprocessor.
 
 ### Two additional generation facts
 
-1. **Analyzer bounds fix (in the pinned `snesrecomp` submodule).** Rev 2
+1. **Engine fixes (in the pinned `snesrecomp` submodule; vendored as
+   `patches/engine-rev2-fixes.patch` and applied automatically).**
+
+   **Analyzer bounds.** Rev 2
    changes the bytes at `BF:B1E5` so the v1.0-derived cfg root decodes a
    `JSR $FF49` into compressed graphics; the instruction at `BF:FFFF` then
    read one byte past the 4 MiB image and both analyzers crashed. The local
    submodule patch makes `decode_insn()` return `None` when an instruction or
    its operands do not fit in the image. This is game-agnostic fail-closed
    behavior and must be upstreamed before the submodule pin is updated.
-2. **The native NMI vector moved.** v1.0 points at `$A968`; the Rev 2 header
+
+   **Indirect dispatch fallback.** Entering a level in 2P Team hit
+   `JMP ($817C)` at `$BF:808F` with an index outside the one target the v1.0
+   cfg authorized. The generated OOB arm called
+   `cpu_unresolved_abandon_balanced()` ("handler side effects SKIPPED"), so
+   the scene rendered but the game wedged. Codegen now emits
+   `interp_tier_dispatch_balanced()` at that arm: the interpreter resolves the
+   pointer at runtime and the handler balances the caller frame; it still
+   falls back to the balanced abandon if the interpreter bails. Documented in
+   the engine as "never worse than the drop path".
+3. **The native NMI vector moved.** v1.0 points at `$A968`; the Rev 2 header
    declares `$A976`. The adapter used to hardcode the v1.0 address, so Rev 2
    ran the wrong handler: the CPU advanced through boot modes but never turned
    the PPU/APU on (0 video and 0 audio frames over a 3600-frame soak).
@@ -84,6 +97,11 @@ new indirect target would make the v1.0-derived cfg incomplete for v1.2.
 - 3600-frame soak: 3481 video-active frames, 3222 audio-active frames,
   3,419,452 nonzero audio samples, no runtime/LLE failure, exit 0.
 - Frame 600 shows the correct Nintendo "Presents" splash (256x224, 4:3).
+- Deterministic route `two_player_team.dks` (title -> Player Select -> 2P Team
+  -> map -> Jungle Hijinxs) now reaches gameplay: DK/Diddy and bananas render,
+  no `[unresolved-abandon]` line, video and audio stay active through frame
+  9000. The same route before the codegen fix wedged at level entry.
+- 1-player `recipes/route_jungle.dks` still completes (no regression).
 
-This is **boot-and-attract validated**, not a claim of full-game certification.
+This is **boot/route validated**, not a claim of full-game certification.
 The v1.2 bugfix scenes and a reference-emulator comparison are still open.
