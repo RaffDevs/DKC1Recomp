@@ -83,6 +83,7 @@ set(DKC1_RUNNER_SOURCES
     runner/dkc1_flight_recorder.c
     runner/dkc1_blank_scan.c
     runner/dkc1_invariant_monitor.c
+    runner/dkc1_rev2_stubs.c
     runner/verified_rom.c)
 
 # DKC1 supplies its own lightweight keybind/report host adapters. The shared

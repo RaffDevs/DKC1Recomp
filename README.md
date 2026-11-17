@@ -61,6 +61,13 @@ Headerless *Donkey Kong Country* USA v1.0:
 | Size | 4,194,304 bytes |
 | SHA-256 | `fa8cacf5bbfc39ee6bbaa557adf89133d60d42f6cf9e1db30d5a36a469f74d15` |
 
+This fork also accepts **USA Rev 2 (v1.2)**, SHA-256
+`628147468c3539283197f58f03b94df49758a332831857481ea9cc31645f0527`.
+Generate it with `--no-widescreen-overrides`; the NMI vector is detected from
+the ROM header. Boot/audio validation and the remaining limits are recorded in
+[`docs/ROM_REVISIONS.md`](docs/ROM_REVISIONS.md). The local split-screen
+architecture is drafted in [`docs/SPLITSCREEN_DESIGN.md`](docs/SPLITSCREEN_DESIGN.md).
+
 The ROM must remain outside Git. No ROM bytes, extracted assets, or generated
 game code are committed.
 

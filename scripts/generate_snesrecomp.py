@@ -11,10 +11,13 @@ import shutil
 import subprocess
 import sys
 
-# Stock DKC1 USA v1.0 (headerless) and the Dixie Kong Country mod ROM
-# (supported DKC1 + user-supplied IPS, 6 MiB expanded). See docs/DIXIE_MOD.md.
+# Supported stock DKC1 USA revisions (headerless) and the Dixie Kong Country
+# mod ROM (supported DKC1 + user-supplied IPS, 6 MiB expanded). Rev 2 is the
+# USA v1.2 bugfix revision; its code changes are in-place patches against the
+# v1.0 layout the recomp/*.cfg files were derived from. See docs/ROM_REVISIONS.md.
 EXPECTED_ROMS = (
-    (0x400000, "fa8cacf5bbfc39ee6bbaa557adf89133d60d42f6cf9e1db30d5a36a469f74d15"),
+    (0x400000, "fa8cacf5bbfc39ee6bbaa557adf89133d60d42f6cf9e1db30d5a36a469f74d15"),  # USA v1.0
+    (0x400000, "628147468c3539283197f58f03b94df49758a332831857481ea9cc31645f0527"),  # USA v1.2 / Rev 2
     (0x600000, "2769b72a8a2050000336f5dd6dea1a45385f4f35ee710dafb0c0a3592295643b"),
 )
 
@@ -31,7 +34,8 @@ def validate_rom(path: Path) -> None:
             return
     raise ValueError(
         f"Unsupported ROM size {size} / SHA-256 {digest}; "
-        "expected the supported stock DKC1 or the pinned Dixie mod ROM.")
+        "expected a supported stock DKC1 USA revision (v1.0 or v1.2/Rev 2) "
+        "or the pinned Dixie mod ROM.")
 
 
 def run(command: list[str], description: str) -> None:
@@ -39,6 +43,30 @@ def run(command: list[str], description: str) -> None:
     if result.returncode:
         raise RuntimeError(
             f"{description} failed with exit code {result.returncode}.")
+
+
+def apply_engine_patches(repository: Path) -> None:
+    """Apply the local game-agnostic analyzer fix after a fresh submodule init.
+
+    Idempotent: a patch that is already present is detected by a reverse
+    apply --check and skipped. See patches/ and docs/ROM_REVISIONS.md.
+    """
+    submodule = repository / "snesrecomp"
+    patch_dir = repository / "patches"
+    if not patch_dir.is_dir():
+        return
+    for patch in sorted(patch_dir.glob("*.patch")):
+        base = ["git", "-C", str(submodule), "apply"]
+        if subprocess.run(base + ["--reverse", "--check", str(patch)],
+                          capture_output=True).returncode == 0:
+            print(f"engine patch already applied: {patch.name}")
+            continue
+        result = subprocess.run(base + [str(patch)], capture_output=True,
+                                text=True)
+        if result.returncode:
+            raise RuntimeError(
+                f"engine patch {patch.name} failed: {result.stderr.strip()}")
+        print(f"applied engine patch: {patch.name}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -86,6 +114,8 @@ def main() -> int:
     if not emitter.is_file():
         raise FileNotFoundError(
             "snesrecomp is not initialized; run git submodule update --init --recursive")
+    # Required to analyze the v1.2/Rev 2 dump: see patches/ and docs/ROM_REVISIONS.md.
+    apply_engine_patches(repository)
     if not header_sync.is_file():
         raise FileNotFoundError(
             f"snesrecomp header synchronizer is missing: {header_sync}")

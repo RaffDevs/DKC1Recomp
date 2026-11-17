@@ -1,0 +1,41 @@
+diff --git a/recompiler-rs/src/insn.rs b/recompiler-rs/src/insn.rs
+index 72d680d..cefeced 100644
+--- a/recompiler-rs/src/insn.rs
++++ b/recompiler-rs/src/insn.rs
+@@ -530,6 +530,13 @@ pub fn decode_insn(data: &[u8], offset: usize, pc: u32, bank: u32, m: u8, x: u8)
+         }
+     };
+ 
++    /* A bogus code target can point into the last bytes of the image (for
++     * example a v1.2 DKC1 pointer into compressed graphics). An operand that
++     * runs past the end is not a decodable instruction; fail closed. */
++    if offset.saturating_add(length as usize) > data.len() {
++        return None;
++    }
++
+     let b = |n: usize| -> u32 { data[offset + n] as u32 };
+     let word = || -> u32 { b(1) | (b(2) << 8) };
+     let long24 = || -> u32 { b(1) | (b(2) << 8) | (b(3) << 16) };
+diff --git a/recompiler/snes65816.py b/recompiler/snes65816.py
+index 2cbc929..50873ee 100644
+--- a/recompiler/snes65816.py
++++ b/recompiler/snes65816.py
+@@ -410,12 +410,17 @@ def opcode_table() -> dict:
+ 
+ def decode_insn(data: bytes, offset: int, pc: int, bank: int,
+                 m: int = 1, x: int = 1) -> Optional[Insn]:
+-    """Decode one 65816 instruction. Returns None on unknown opcode."""
++    """Decode one 65816 instruction. Returns None on unknown opcode or when
++    the instruction (including its operands) does not fit in the ROM image."""
++    if offset < 0 or offset >= len(data):
++        return None
+     op = data[offset]
+     if op not in _OPCODES:
+         return None
+     mnem, mode, len_spec = _OPCODES[op]
+     length = len_spec(m, x) if callable(len_spec) else len_spec
++    if offset + length > len(data):
++        return None
+ 
+     def b(n): return data[offset + n]
+     def word(): return b(1) | (b(2) << 8)

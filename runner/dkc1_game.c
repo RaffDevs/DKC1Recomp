@@ -8,6 +8,7 @@
 
 #include "common_cpu_infra.h"
 #include "common_rtl.h"
+#include "verified_rom.h"
 #include "cpu_state.h"
 #include "snes/dma.h"
 #include "snes/cart.h"
@@ -23,10 +24,9 @@
 #include <string.h>
 
 enum {
-  /* DKC1 USA v1.0 vectors: reset $80:8000, native NMI $80:A968 (the runtime's
-   * pc24 convention folds the system banks to bank 00). */
+  /* DKC1 vectors: reset $80:8000. The native NMI moved from $A968 in v1.0
+   * to $A976 in v1.2/Rev 2, so it is read from the verified ROM header. */
   kDkc1ResetPc = 0x008000,
-  kDkc1NmiPc = 0x00A968,
 };
 
 static bool s_cpu_initialized;
@@ -140,7 +140,7 @@ static void Dkc1RunOneFrame(void) {
     g_snes->inNmi = true;
     cpu_push_interrupt_frame_at(&g_cpu, s_resume_pc);
     s_last_lle_result =
-        interp_bridge_run_until_quiescent(&g_cpu, kDkc1NmiPc);
+        interp_bridge_run_until_quiescent(&g_cpu, Dkc1NativeNmiPc());
   } else {
     s_last_lle_result =
         interp_bridge_run_until_quiescent(&g_cpu, s_resume_pc);
