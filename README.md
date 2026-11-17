@@ -66,7 +66,11 @@ This fork also accepts **USA Rev 2 (v1.2)**, SHA-256
 Generate it with `--no-widescreen-overrides`; the NMI vector is detected from
 the ROM header. Boot/audio validation and the remaining limits are recorded in
 [`docs/ROM_REVISIONS.md`](docs/ROM_REVISIONS.md). The local split-screen
-architecture is drafted in [`docs/SPLITSCREEN_DESIGN.md`](docs/SPLITSCREEN_DESIGN.md).
+architecture is implemented in `dkc1_dual_host` (two headless sessions plus a
+vertical-split SDL2 compositor) and described in
+[`docs/SPLITSCREEN_DESIGN.md`](docs/SPLITSCREEN_DESIGN.md); launch it with
+`./scripts/run_split.sh <rom>`. Audio forwarding and shared game state are not
+implemented yet.
 
 The ROM must remain outside Git. No ROM bytes, extracted assets, or generated
 game code are committed.

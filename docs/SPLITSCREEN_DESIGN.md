@@ -1,6 +1,29 @@
 # Split-screen co-op design (Rev 2 fork)
 
-Status: **design only**. No split-screen code is implemented yet.
+Status: **Phase 1+2 implemented** (two sessions + compositor + shared startup
+route). See "Implemented shape" below. Still unvalidated by visible playtest.
+
+## Implemented shape (2026-11-17)
+
+- `dkc1_snesrecomp_headless --split-server <port> <rom.sfc>` streams raw
+  256x224 RGBA frames over loopback TCP. One input mask in, one frame out;
+  `0xFFFFFFFF` shuts it down. No ROM/save/generated data crosses the socket.
+- `dkc1_dual_host` forks two of those servers, connects to both, sends the
+  same input mask to each, waits for both frames and presents them top/bottom
+  with a divider. It links no emulator code and owns no guest state.
+- `--startup <masks.txt>` sends a deterministic input stream to **both**
+  sessions before live input takes over. `recipes/one_player_jungle_playback.txt`
+  is an `DKC1_INPUT_RECORD` capture of `recipes/route_jungle.dks`, so both
+  sessions boot into 1P Jungle Hijinxs together.
+- Run it with `./scripts/run_split.sh <rom>`. P1: arrows + S/Z/A/X/Q/W/
+  Return/RShift or gamepad 0. P2: IJKL + U/O/P/;/9/0/Backslash/RCtrl or
+  gamepad 1. Escape or window close stops both sessions.
+
+**Important scope note:** each session is a separate 1P cartridge run. That is
+what gives genuinely independent cameras. The cartridge's built-in "2 Players
+Team" mode shares one world and one camera, so it cannot be split without
+duplicating guest state — a much larger project. Each player currently has
+their own copy of the level; shared enemies/inventory are not implemented.
 
 ## Goal
 
@@ -75,14 +98,17 @@ one-monster-at-a-time "follow the leader" co-op, or a single shared camera.
    host CPU cost measured per `docs/PERFORMANCE.md`; no claim of full-campaign
    certification without the project's gates.
 
-## Files expected to change
+## Files
 
 | Area | File(s) |
 | --- | --- |
-| Frame sink | `runner/headless_main.c`, new `runner/dual/session.c`/`.h` |
-| Compositor | new `runner/dual/dual_host.c`, `CMakeLists.txt` |
+| Frame sink | `runner/headless_main.c` (`Dkc1SplitServer`) |
+| Compositor | `runner/dual/dual_host.c`, `CMakeLists.txt`, `scripts/run_split.sh` |
+| Startup route | `recipes/one_player_jungle_playback.txt` (generated, no ROM bytes) |
 | Docs | this file, `docs/ROM_REVISIONS.md`, `README.md` status line |
-| Tests | `tests/test_dual_host.py` (synthetic input replay, no ROM committed) |
+
+Audio is **not forwarded** yet: the frame protocol carries video only, so the
+split window is silent. Mixing the two S-DSP streams is the next step.
 
 ## Open questions
 

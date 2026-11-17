@@ -125,6 +125,13 @@ endif()
 target_link_libraries(dkc1_snesrecomp_headless PRIVATE
     ${SNESRECOMP_RUNNER_LIBRARIES})
 
+# Split-screen compositor: a plain SDL2 host that drives two headless frame
+# servers in lockstep. It links no emulator code and owns no guest state.
+if(APPLE OR UNIX)
+    add_executable(dkc1_dual_host runner/dual/dual_host.c)
+    snesrecomp_target_sdl(dkc1_dual_host)
+endif()
+
 if(APPLE)
     enable_language(OBJC)
     add_executable(test_macos_graphics tests/test_macos_graphics.m

@@ -29,8 +29,90 @@
 #define Dkc1SetEnv(name, value) _putenv_s((name), (value))
 #else
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 #define Dkc1MakeDir(path) mkdir((path), 0755)
 #define Dkc1SetEnv(name, value) setenv((name), (value), 0)
+#endif
+
+/* Split-screen frame server. One process owns one complete SNES session
+ * (the runner has process-global machine state), so the compositor drives
+ * two of these over loopback TCP in lockstep. Protocol:
+ *   server -> client: 12-byte header "DKC1" + LE u16 width, height, bpp
+ *   client -> server: 4-byte LE input mask (0xFFFFFFFF = shutdown)
+ *   server -> client: width*height*bpp raw RGBA bytes, row-major
+ * No ROM, save, or generated data ever crosses the socket. */
+#ifndef _WIN32
+static int SendAll(int fd, const uint8_t *data, size_t length) {
+  size_t sent = 0;
+  while (sent < length) {
+    ssize_t n = send(fd, data + sent, length - sent, 0);
+    if (n <= 0) return 0;
+    sent += (size_t)n;
+  }
+  return 1;
+}
+
+static int RecvAll(int fd, uint8_t *data, size_t length) {
+  size_t received = 0;
+  while (received < length) {
+    ssize_t n = recv(fd, data + received, length - received, 0);
+    if (n <= 0) return 0;
+    received += (size_t)n;
+  }
+  return 1;
+}
+
+static int Dkc1SplitServer(int port, uint8_t *pixels, size_t pitch,
+                            int width, int height, int bpp) {
+  int listener = socket(AF_INET, SOCK_STREAM, 0);
+  if (listener < 0) return 30;
+  int reuse = 1;
+  (void)setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof reuse);
+  struct sockaddr_in address;
+  memset(&address, 0, sizeof address);
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  address.sin_port = htons((uint16_t)port);
+  if (bind(listener, (struct sockaddr *)&address, sizeof address) != 0 ||
+      listen(listener, 1) != 0) {
+    close(listener);
+    return 31;
+  }
+  fprintf(stderr, "split server: listening on 127.0.0.1:%d\n", port);
+  int client = accept(listener, NULL, NULL);
+  close(listener);
+  if (client < 0) return 32;
+
+  uint8_t header[12] = {'D', 'K', 'C', '1', 0, 0, 0, 0, 0, 0, 0, 0};
+  header[4] = (uint8_t)(width & 0xFF);
+  header[5] = (uint8_t)((width >> 8) & 0xFF);
+  header[6] = (uint8_t)(height & 0xFF);
+  header[7] = (uint8_t)((height >> 8) & 0xFF);
+  header[8] = (uint8_t)bpp;
+  int ok = SendAll(client, header, sizeof header);
+
+  size_t frame_bytes = (size_t)width * (size_t)height * (size_t)bpp;
+  while (ok) {
+    uint8_t mask_bytes[4];
+    if (!RecvAll(client, mask_bytes, sizeof mask_bytes)) break;
+    uint32_t mask = (uint32_t)mask_bytes[0] |
+                    ((uint32_t)mask_bytes[1] << 8) |
+                    ((uint32_t)mask_bytes[2] << 16) |
+                    ((uint32_t)mask_bytes[3] << 24);
+    if (mask == 0xFFFFFFFFu) break;
+    RtlRunFrame(mask);
+    Dkc1DrawPpuFrame();
+    for (int y = 0; y < height && ok; y++) {
+      ok = SendAll(client, pixels + (size_t)y * pitch,
+                   (size_t)width * (size_t)bpp);
+    }
+  }
+  close(client);
+  return ok ? 0 : 33;
+}
 #endif
 
 static void PrintHash(FILE *stream, const uint8_t hash[32]) {
@@ -118,6 +200,24 @@ int main(int argc, char **argv) {
   dma_set_zero_size_vram_noop(1);
 #endif
   }
+#ifndef _WIN32
+  int split_port = 0;
+  if (argc >= 2 && strcmp(argv[1], "--split-server") == 0) {
+    if (argc != 4) {
+      fprintf(stderr,
+              "usage: dkc1_snesrecomp_headless --split-server <port> <rom.sfc>\n");
+      return 2;
+    }
+    split_port = (int)strtol(argv[2], NULL, 10);
+    if (split_port <= 0 || split_port > 65535) {
+      fprintf(stderr, "split server: invalid port\n");
+      return 2;
+    }
+    argv[1] = argv[3];
+    argc = 2;
+    Dkc1SetEnv("DKC1_WIDESCREEN", "0");
+  }
+#endif
   if (argc < 2 || argc > 3) {
     fprintf(stderr, "usage: dkc1_snesrecomp_headless <rom.sfc> [frames]\n");
     return 2;
@@ -257,6 +357,16 @@ int main(int argc, char **argv) {
   const size_t frame_width = (size_t)Dkc1VideoWidth();
   const size_t frame_bytes = frame_width * kHeight * kBytesPerPixel;
   Dkc1BeginDrawing(pixels, frame_width * kBytesPerPixel);
+
+#ifndef _WIN32
+  if (split_port) {
+    int result = Dkc1SplitServer(split_port, pixels,
+                                 frame_width * kBytesPerPixel,
+                                 (int)frame_width, 224, kBytesPerPixel);
+    free(rom);
+    return result;
+  }
+#endif
 
   /* A zero-frame run is a diagnostic render of the exact loaded machine
    * state.  It deliberately does not execute CPU/APU/PPU time.  Loading a
